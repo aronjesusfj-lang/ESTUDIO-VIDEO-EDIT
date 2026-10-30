@@ -79,7 +79,23 @@ pnpm install
 pnpm dev
 ```
 
-No environment variables or external services are required for local development.
+On macOS versions older than 13.5, Cloudflare's local Workers runtime cannot start. Run the browser-only local app with `SUBVID_LOCAL_DEV=1 pnpm dev`; it skips the Workers adapter and does not affect production builds. The first transcription/translation downloads the selected model weights to the browser cache.
+
+On the supplied Mac, double-click `launch-subvid.command` (or the `ESTUDIO VIDEO EDIT.command` alias on the Desktop) to start local development and open the app in the browser.
+
+## Batch processing
+
+The upload screen accepts multiple media files. Choose the speech model, optional translation model and target language, output type, video format, and optional MP4 audio normalization, then start the queue. The queue processes one file at a time, reports per-file errors, supports retry/cancel, and saves the selected settings as a local template. Processed subtitles are downloaded as SRT; selecting “Video + SRT” also exports a subtitled video.
+
+For an unattended folder workflow, install FFmpeg on the machine and use the CLI:
+
+```sh
+pnpm batch -- --input ./videos --output ./subtitles --model tiny --language es --watch
+```
+
+The CLI accepts `--model tiny|base|small`, `--language es` to force speech recognition language, and optional `--translate-to es` with `--source-language en` when automatic source-language detection is unavailable. Translation uses NLLB-200. Media is decoded and processed locally; model weights are downloaded once to `~/.cache/subvid/models`. Existing output files are preserved and new runs get a numbered filename.
+
+The editor also supports adding subtitle cues and independent text overlays, splitting/merging transcript lines, optional alignment to nearby speech edges, custom style presets, vertical/square framing, horizontal crop, watermark text, and deterministic subtitle review hints. Speech-edge alignment is a timing aid and should be reviewed for music or noisy audio.
 
 ## Scripts
 
@@ -90,6 +106,7 @@ No environment variables or external services are required for local development
 | `pnpm preview` | Preview the production build locally |
 | `pnpm preview:cf` | Build and preview with Wrangler (Cloudflare Workers runtime) |
 | `pnpm deploy` | Build and deploy to Cloudflare Workers |
+| `pnpm batch -- [options]` | Transcribe a folder locally; see Batch processing above |
 
 ## Project structure
 

@@ -5,7 +5,7 @@ import {
   mapTimeThroughCuts,
   type TimeRange,
 } from "@/scripts/cuts.ts"
-import { drawFrame, drawSubtitlesAt } from "@/scripts/export/subtitleRenderer.ts"
+import { drawFrame, drawProcessedFrame, processedDimensions } from "@/scripts/export/subtitleRenderer.ts"
 
 type VideoExportOptions = {
   ui: any
@@ -21,7 +21,7 @@ type VideoExportOptions = {
   enableExports: (on: boolean) => void
   setStatus: (message: string, kind?: string) => void
   modal: any
-  remuxAudioToAacLc?: (file: File) => Promise<Blob>
+  remuxAudioToAacLc?: (file: File, normalize?: boolean) => Promise<Blob>
 }
 
 type WebCodecsExportResult =
@@ -33,6 +33,10 @@ type ExportQuality = "optimized" | "high" | "lossless"
 type ExportSettings = {
   format: ExportFormat
   quality: ExportQuality
+  aspect: "source" | "vertical" | "square"
+  watermark: string
+  normalizeAudio: boolean
+  cropX: number
 }
 
 const EXPORT_FORMATS = new Set<ExportFormat>(["mp4", "webm"])
@@ -129,6 +133,10 @@ export function createVideoExporter(options: VideoExportOptions) {
     return {
       format: EXPORT_FORMATS.has(rawFormat) ? rawFormat : "mp4",
       quality: EXPORT_QUALITIES.has(rawQuality) ? rawQuality : "optimized",
+      aspect: ui.exportAspect?.value === "vertical" || ui.exportAspect?.value === "square" ? ui.exportAspect.value : "source",
+      watermark: String(ui.exportWatermark?.value || "").slice(0, 40),
+      normalizeAudio: !!ui.normalizeAudio?.checked,
+      cropX: Math.max(0, Math.min(100, Number(ui.exportCropX?.value) || 50)),
     }
   }
 
@@ -305,13 +313,23 @@ export function createVideoExporter(options: VideoExportOptions) {
 
     let canvas: any = null
     let ctx: any = null
+    let sourceCanvas: any = null
+    let sourceCtx: any = null
 
     // For MP4, probe the source audio codec. If it's not AAC-LC (mp4a.40.2),
     // QuickTime will show an "incompatible content" warning (HE-AAC, Opus, etc.).
     // When ffmpeg is available, use it to transcode the audio to AAC-LC before
     // passing the file to mediabunny — ffmpeg handles HE-AAC/SBR correctly while
     // WebCodecs decoders often don't, causing severe quality degradation.
-    if (settings.format === "mp4" && remuxAudioToAacLc) {
+    if (settings.format === "mp4" && remuxAudioToAacLc && settings.normalizeAudio) {
+      try {
+        modal.setExportStage(tt("exportStages.preparingEncoder"), "busy")
+        const remuxed = await remuxAudioToAacLc(file, true)
+        input = new Input({ source: new BlobSource(remuxed), formats: ALL_FORMATS })
+      } catch (error) {
+        console.warn("Audio normalization failed; continuing with source audio", error)
+      }
+    } else if (settings.format === "mp4" && remuxAudioToAacLc) {
       try {
         const audioTracks = await input.getAudioTracks()
         const firstTrack = audioTracks[0]
@@ -342,19 +360,24 @@ export function createVideoExporter(options: VideoExportOptions) {
           process: (sample: any) => {
             if (cuts.length && cutAt(cuts, sample.timestamp)) return null
             if (!ctx) {
-              canvas = new OffscreenCanvas(
-                sample.displayWidth,
-                sample.displayHeight,
-              )
+              const dimensions = processedDimensions(sample.displayWidth, sample.displayHeight, settings.aspect)
+              canvas = new OffscreenCanvas(dimensions.width, dimensions.height)
               ctx = canvas.getContext("2d")
+              sourceCanvas = new OffscreenCanvas(sample.displayWidth, sample.displayHeight)
+              sourceCtx = sourceCanvas.getContext("2d")
             }
-            sample.draw(ctx, 0, 0)
-            drawSubtitlesAt(
+            sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height)
+            sample.draw(sourceCtx, 0, 0)
+            drawProcessedFrame(
               ctx,
-              sample.timestamp,
+              sourceCanvas,
               canvas.width,
               canvas.height,
+              sample.timestamp,
               segments,
+              settings.aspect,
+              settings.watermark,
+              settings.cropX,
             )
             if (!cuts.length) return canvas
             // Close the gaps left by the cuts.
@@ -496,8 +519,9 @@ export function createVideoExporter(options: VideoExportOptions) {
       return
     }
 
-    const w = video.videoWidth || 1280
-    const h = video.videoHeight || 720
+    const sourceW = video.videoWidth || 1280
+    const sourceH = video.videoHeight || 720
+    const { width: w, height: h } = processedDimensions(sourceW, sourceH, settings.aspect)
     const canvas = document.createElement("canvas")
     canvas.width = w
     canvas.height = h
@@ -599,7 +623,7 @@ export function createVideoExporter(options: VideoExportOptions) {
         }
         video.currentTime = cut.end
       }
-      if (ctx) drawFrame(ctx, video, w, h, segments)
+      if (ctx) drawFrame(ctx, video, w, h, segments, settings.aspect, settings.watermark, settings.cropX)
       if (dur && isFinite(dur)) {
         const keptDur = Math.max(0.001, dur - cutDuration(cuts))
         const done = mapTimeThroughCuts(cuts, video.currentTime) / keptDur

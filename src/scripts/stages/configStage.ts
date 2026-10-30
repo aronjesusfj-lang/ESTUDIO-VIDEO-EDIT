@@ -1,6 +1,6 @@
 import { prettifyBytes } from "@/scripts/file.ts"
 import { langName } from "@/scripts/i18n.ts"
-import { ASR_MODEL, LANGS } from "@/scripts/languages.ts"
+import { ASR_MODEL, ASR_MODELS, LANGS } from "@/scripts/languages.ts"
 import { createAudioService } from "@/scripts/media/audio.ts"
 import type { Stage } from "@/scripts/stageManager.ts"
 import {
@@ -115,7 +115,7 @@ export function createConfigStageController({
   prepareEditor,
   onTranscriptPreview,
 }: ConfigStageOptions) {
-  let asrReady = false
+  let asrReadyModel = ""
   let asrReadyPromise: Promise<void> | null = null
   let progressRaf = 0
   let progressIndeterminate = false
@@ -264,21 +264,23 @@ export function createConfigStageController({
   }
 
   async function ensureRecognizer() {
-    if (asrReady) return
+    const model = ASR_MODELS[ui.asrModel?.value as keyof typeof ASR_MODELS] || ASR_MODEL
+    if (asrReadyModel === model) return
     if (!asrReadyPromise) {
       asrReadyPromise = (async () => {
         updateDownloadStatus("asr", "downloading")
         await transformersClient.call("ensure-asr", {
-          model: ASR_MODEL,
+          model,
           webgpu: hasWebGPU,
         })
-        asrReady = true
+        asrReadyModel = model
         updateDownloadStatus("asr", "ready")
       })().finally(() => {
         asrReadyPromise = null
       })
     }
     await asrReadyPromise
+    if (asrReadyModel !== model) await ensureRecognizer()
   }
 
   async function preloadAssetsInBackground() {
@@ -306,7 +308,7 @@ export function createConfigStageController({
       const keys = await caches.keys()
       for (const key of keys.filter((k) => /transformers/i.test(k))) {
         const requests = await (await caches.open(key)).keys()
-        if (requests.some((request) => request.url.includes(ASR_MODEL)))
+        if (requests.some((request) => request.url.includes(ASR_MODELS[ui.asrModel?.value as keyof typeof ASR_MODELS] || ASR_MODEL)))
           return true
       }
     } catch (error) {
@@ -414,7 +416,7 @@ export function createConfigStageController({
 
     try {
       const recognizerStartedAt = performance.now()
-      const cached = asrReady
+      const cached = asrReadyModel === (ASR_MODELS[ui.asrModel?.value as keyof typeof ASR_MODELS] || ASR_MODEL)
       logGeneration("recognizer:start", { cached })
       await ensureRecognizer()
       logGeneration("recognizer:ready", {
@@ -742,6 +744,7 @@ export function createConfigStageController({
         segments: baseSegments.length,
         tracks: targets.length,
       })
+      return { detectedLang, segmentsByLang, activeLang: target }
     } catch (error: any) {
       console.error(error)
       console.warn("[generate] failed", {
@@ -754,6 +757,7 @@ export function createConfigStageController({
       ui.configError.textContent = message
       ui.configError.hidden = false
       ui.configProgress.hidden = true
+      return null
     } finally {
       ui.transcribeBtn.disabled = false
     }
@@ -784,6 +788,7 @@ export function createConfigStageController({
     startProgressCreep,
     stopProgressCreep,
     ensureRecognizer,
+    generateForBatch: generate,
     schedulePreload,
     startEarlyTranscription,
     resetTranscriptionCache,

@@ -29,5 +29,14 @@ const t = useTranslations(Astro.currentLocale)
   <div class="sidebar-foot">
     <span id="transcript-hint" class="tx-hint" hidden></span>
     <span id="seg-count" class="seg-count"></span>
+    <button id="add-subtitle-btn" class="btn-ghost" type="button">
+      {Astro.currentLocale === "es" ? "+ Agregar texto" : "+ Add text"}
+    </button>
+    <button id="add-text-overlay-btn" class="btn-ghost" type="button">
+      {Astro.currentLocale === "es" ? "+ Rótulo" : "+ Title overlay"}
+    </button>
+    <button id="align-silence-btn" class="btn-ghost" type="button" disabled title={Astro.currentLocale === "es" ? "Ajustar los tiempos a los bordes de voz detectados" : "Align timings to detected speech edges"}>
+      {Astro.currentLocale === "es" ? "Ajustar a la voz" : "Align to speech"}
+    </button>
   </div>
 </aside>

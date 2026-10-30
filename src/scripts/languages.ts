@@ -1,4 +1,9 @@
 export const ASR_MODEL = "Xenova/whisper-base"
+export const ASR_MODELS = {
+  fast: "Xenova/whisper-tiny",
+  balanced: ASR_MODEL,
+  accurate: "Xenova/whisper-small",
+} as const
 export const TRANSLATION_MODEL = "Xenova/nllb-200-distilled-600M"
 
 export const MARIAN_TRANSLATION_MODELS: Record<string, string> = {

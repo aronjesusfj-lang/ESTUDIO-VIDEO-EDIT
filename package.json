@@ -10,6 +10,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "batch": "node scripts/subvid-batch.mjs",
     "astro": "astro",
     "deploy": "astro build && wrangler deploy"
   },

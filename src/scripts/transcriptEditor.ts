@@ -909,6 +909,15 @@ export function createTranscriptEditor(options: TranscriptEditorOptions) {
   // ── Events ──
 
   function wire() {
+    root.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== "m") return
+      const line = lineOf(selectionRange()?.startContainer || null)
+      if (!line) return
+      const index = Number(line.dataset.index)
+      if (!Number.isInteger(index) || index < 0 || index >= segments().length - 1) return
+      event.preventDefault()
+      mergeLines(index)
+    })
     root.addEventListener("beforeinput", (event: InputEvent) => {
       const type = event.inputType
       if (type === "historyUndo" || type === "historyRedo") {

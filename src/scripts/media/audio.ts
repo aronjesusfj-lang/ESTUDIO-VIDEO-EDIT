@@ -268,7 +268,7 @@ export function createAudioService(options: AudioServiceOptions) {
     return copied
   }
 
-  async function remuxAudioToAacLc(file: File): Promise<Blob> {
+  async function remuxAudioToAacLc(file: File, normalize = false): Promise<Blob> {
     const worker = await ensureFfmpeg()
     const inputName = "export-source.mp4"
     const outputName = "export-aac.mp4"
@@ -278,6 +278,7 @@ export function createAudioService(options: AudioServiceOptions) {
         "-i", inputName,
         "-c:v", "copy",
         "-c:a", "aac",
+        ...(normalize ? ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"] : []),
         "-b:a", "192k",
         "-ar", "44100",
         outputName,

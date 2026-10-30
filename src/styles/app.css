@@ -581,6 +581,22 @@ input[type="range"] {
     border-color 150ms ease,
     background-color 150ms ease;
 }
+.batch-panel { display: grid; gap: 0.75rem; }
+.batch-add { justify-self: start; cursor: pointer; }
+.batch-queue { display: grid; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.batch-items { display: grid; gap: 0.4rem; max-height: 180px; overflow: auto; }
+.batch-template { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.batch-template label { display: grid; gap: 0.25rem; color: var(--text-2); font-size: 0.75rem; }
+.batch-template label.batch-check { display: flex; align-items: center; gap: 0.35rem; }
+.batch-template select { min-height: 2rem; max-width: 12rem; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.batch-item { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: 0.8rem; }
+.batch-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-item-status { flex: none; color: var(--text-3); }
+.batch-item-status.is-done { color: var(--success, #55a66e); }
+.batch-item-status.is-error { color: var(--danger); }
+.batch-actions { display: flex; align-items: center; gap: 0.5rem; }
+.export-crop { display: grid; align-content: center; gap: 0.1rem; min-width: 6rem; color: var(--text-2); font-size: 0.65rem; }
+.export-crop input { width: 6rem; }
 /* 1-bit checker texture, the same dithering as the demo, fills the target
    while hovering or dragging a file over it. */
 .dropzone::before {

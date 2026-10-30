@@ -233,6 +233,7 @@ type TranslationServiceOptions = {
   tt: (path: string, vars?: Record<string, unknown>) => string
   langName: (code: string) => string
   setStatus: (message: string, kind?: string) => void
+  translationPreference?: () => "auto" | "compact" | "quality"
 }
 
 export function createTranslationService(options: TranslationServiceOptions) {
@@ -300,6 +301,16 @@ export function createTranslationService(options: TranslationServiceOptions) {
   }
 
   async function ensureTranslation(sourceLang: string, targetLang: string) {
+    const preference = options.translationPreference?.() || "auto"
+    if (preference === "quality") {
+      await ensureNllbTranslator()
+      return "nllb"
+    }
+    if (preference === "compact") {
+      if (await ensureMarianTranslator(sourceLang, targetLang)) return "marian"
+      await ensureNllbTranslator()
+      return "nllb"
+    }
     const backend = await resolveTranslationBackend(sourceLang, targetLang)
     if (backend === "prompt") {
       options.updateDownloadStatus("translation", "downloading")

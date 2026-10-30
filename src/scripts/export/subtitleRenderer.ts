@@ -392,7 +392,52 @@ export function drawFrame(
   w: number,
   h: number,
   segments: any[],
+  aspect: "source" | "vertical" | "square" = "source",
+  watermark = "",
+  cropX = 50,
 ) {
-  ctx.drawImage(video, 0, 0, w, h)
-  drawSubtitlesAt(ctx, video.currentTime, w, h, segments)
+  drawProcessedFrame(ctx, video, w, h, video.currentTime, segments, aspect, watermark, cropX)
+}
+
+export function processedDimensions(w: number, h: number, aspect = "source") {
+  if (aspect === "vertical") return { width: Math.max(2, Math.round(h * 9 / 16)), height: h }
+  if (aspect === "square") { const side = Math.min(w, h); return { width: side, height: side } }
+  return { width: w, height: h }
+}
+
+export function drawProcessedFrame(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  source: CanvasImageSource,
+  w: number,
+  h: number,
+  time: number,
+  segments: any[],
+  aspect = "source",
+  watermark = "",
+  cropX = 50,
+) {
+  const sourceWidth = Number((source as any).videoWidth || (source as any).width || (source as any).displayWidth) || w
+  const sourceHeight = Number((source as any).videoHeight || (source as any).height || (source as any).displayHeight) || h
+  const targetRatio = w / h
+  const sourceRatio = sourceWidth / sourceHeight
+  let sx = 0, sy = 0, sw = sourceWidth, sh = sourceHeight
+  if (aspect !== "source") {
+    if (sourceRatio > targetRatio) { sw = sourceHeight * targetRatio; sx = (sourceWidth - sw) * Math.max(0, Math.min(100, cropX)) / 100 }
+    else { sh = sourceWidth / targetRatio; sy = (sourceHeight - sh) / 2 }
+  }
+  ctx.clearRect(0, 0, w, h)
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h)
+  drawSubtitlesAt(ctx, time, w, h, segments)
+  if (watermark.trim()) {
+    const size = Math.max(16, Math.round(h * 0.035))
+    ctx.save()
+    ctx.font = `600 ${size}px system-ui, sans-serif`
+    ctx.textAlign = "right"
+    ctx.textBaseline = "bottom"
+    ctx.fillStyle = "rgba(255,255,255,.86)"
+    ctx.shadowColor = "rgba(0,0,0,.7)"
+    ctx.shadowBlur = size * 0.35
+    ctx.fillText(watermark.trim().slice(0, 40), w - size * 0.65, h - size * 0.65, w * 0.7)
+    ctx.restore()
+  }
 }

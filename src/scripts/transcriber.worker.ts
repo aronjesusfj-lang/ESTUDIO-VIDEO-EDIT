@@ -30,6 +30,7 @@ const DTYPES = {
 } as const;
 
 let recognizer: any = null;
+let recognizerModel = "";
 let recognizerDevice: Device = "wasm";
 let loading: Promise<void> | null = null;
 let runtimeConfigured = false;
@@ -79,15 +80,21 @@ async function loadRecognizer(model: string, device: Device) {
 
 // Requests may arrive while the model is still loading (e.g. right after the
 // client restarts this worker), so they all share the same load.
-function ensureRecognizer(payload: any) {
-  loading ??= (async () => {
+async function ensureRecognizer(payload: any) {
+  if (recognizerModel === payload.model) return;
+  if (loading) await loading;
+  if (recognizerModel === payload.model) return;
+  loading = (async () => {
     recognizerDevice = payload.forceWasm ? "wasm" : await preferredDevice();
+    recognizer = null;
     await loadRecognizer(payload.model, recognizerDevice);
-  })().catch((error) => {
+    recognizerModel = payload.model;
+  })();
+  try {
+    await loading;
+  } finally {
     loading = null;
-    throw error;
-  });
-  return loading;
+  }
 }
 
 // transformers.js doesn't implement Whisper's language detection and falls

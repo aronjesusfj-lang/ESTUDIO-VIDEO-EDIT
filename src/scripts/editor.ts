@@ -12,6 +12,7 @@ import { createTimelineController } from "@/scripts/timeline.ts";
 import { createTranscriptEditor } from "@/scripts/transcriptEditor.ts";
 import type { ui as appUi } from "@/scripts/ui.ts";
 import { computeWaveform } from "@/scripts/waveform.ts";
+import { alignSegmentsToSpeech } from "@/scripts/silenceAlignment.ts";
 
 export type Segment = SubtitleSegment;
 export type SegmentsByLang = Record<string, Segment[]>;
@@ -56,6 +57,7 @@ type EditorContext = {
   isTranslationReady: () => boolean;
   cutRanges: () => TimeRange[];
   selectedVideoFile: () => File | null;
+  getWaveformAudio: () => Float32Array | null;
   isExporting: () => boolean;
   setStage: (stage: Stage) => void;
   onExportsEnabled: (on: boolean) => void;
@@ -134,6 +136,7 @@ export function createEditor(ctx: EditorContext) {
       tt,
       currentSegments: ctx.currentSegments,
       visibleTracks: ctx.visibleTracks,
+      textOverlays: () => state.segmentsByLang["__overlay"] || [],
       activeLang: () => state.activeLang,
       setActiveLang: (lang) => {
         state.activeLang = lang;
@@ -308,6 +311,52 @@ export function createEditor(ctx: EditorContext) {
   subtitleStyleController.applyCaptionStyle();
   subtitleStyleController.wireStyleControls();
   editorStageController.wireEditorStage();
+  ui.addSubtitleBtn?.addEventListener("click", () => {
+    if (!state.activeLang) return;
+    const text = window.prompt("Text for the new subtitle:");
+    if (!text?.trim()) return;
+    const before = snapshotSegments();
+    const start = Math.max(0, ui.video.currentTime || 0);
+    const segment: Segment = { start, end: start + 3, text: text.trim() };
+    const segments = state.segmentsByLang[state.activeLang] || (state.segmentsByLang[state.activeLang] = []);
+    segments.push(segment);
+    segments.sort((a, b) => a.start - b.start);
+    pushHistory(before);
+    renderSegments();
+    renderTimeline();
+    enableExports(true);
+    updateCaption();
+  });
+  ui.addTextOverlayBtn?.addEventListener("click", () => {
+    const text = window.prompt("Text to show over the video:")?.trim();
+    if (!text) return;
+    const durationInput = window.prompt("Duration in seconds:", "3");
+    const duration = Number(durationInput);
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    const before = snapshotSegments();
+    const start = Math.max(0, ui.video.currentTime || 0);
+    const overlays = state.segmentsByLang["__overlay"] || (state.segmentsByLang["__overlay"] = []);
+    overlays.push({ start, end: start + duration, text });
+    pushHistory(before);
+    updateCaption();
+    enableExports(true);
+  });
+  ui.alignSilenceBtn?.addEventListener("click", () => {
+    const audio = ctx.getWaveformAudio();
+    const segments = state.segmentsByLang[state.activeLang] || [];
+    if (!audio || !segments.length) return;
+    const before = snapshotSegments();
+    const aligned = alignSegmentsToSpeech(segments, audio);
+    const changed = aligned.some((segment, index) =>
+      segment.start !== segments[index].start || segment.end !== segments[index].end,
+    );
+    if (!changed) return;
+    state.segmentsByLang[state.activeLang] = aligned;
+    pushHistory(before);
+    renderSegments();
+    renderTimeline();
+    updateCaption();
+  });
   ui.langAddSelect?.addEventListener("change", () => {
     const target = ui.langAddSelect.value;
     if (target) addLanguage(target);
@@ -324,8 +373,10 @@ export function createEditor(ctx: EditorContext) {
     renderTabs,
     resetHistory: () => historyController.resetHistory(),
     setLangAddStatus,
-    setWaveformAudio: (audio: Float32Array | null, sampleRate = 16_000) =>
-      setWaveform(audio?.length ? computeWaveform(audio, sampleRate) : null),
+    setWaveformAudio: (audio: Float32Array | null, sampleRate = 16_000) => {
+      if (ui.alignSilenceBtn) ui.alignSilenceBtn.disabled = !audio?.length;
+      setWaveform(audio?.length ? computeWaveform(audio, sampleRate) : null);
+    },
     syncActiveCaptionStyle,
     updateCaption,
   };

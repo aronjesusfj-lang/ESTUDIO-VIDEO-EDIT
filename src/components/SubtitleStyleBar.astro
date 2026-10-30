@@ -36,6 +36,9 @@ const t = useTranslations(Astro.currentLocale)
       aria-label={t.style.presetsAria}
     >
     </div>
+    <button id="save-style-preset" class="btn-ghost" type="button">
+      {Astro.currentLocale === "es" ? "Guardar estilo" : "Save style"}
+    </button>
     <label class="sc-toggle style-animation-toggle" title={t.style.animation}>
       <input id="cs-word-highlight" type="checkbox" />
       <span class="sc-toggle-face">

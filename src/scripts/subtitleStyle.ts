@@ -298,6 +298,14 @@ export function createSubtitleStyleController({
   onSelectTrack?: (lang: string) => void
 }) {
   let activePresetId = "default"
+  const CUSTOM_PRESETS_KEY = "subvid.custom-caption-presets.v1"
+  type CustomPreset = { id: string; name: string; s: Record<string, any> }
+  function customPresets(): CustomPreset[] {
+    try {
+      const value = JSON.parse(localStorage.getItem(CUSTOM_PRESETS_KEY) || "[]")
+      return Array.isArray(value) ? value.filter((item) => item?.id && item?.name && item?.s) : []
+    } catch { return [] }
+  }
   let activeCaptionRole = "default"
   let activeCaptionLang = ""
   const presetIdsByTrack = new Map<string, string>()
@@ -454,7 +462,7 @@ export function createSubtitleStyleController({
         btn.type = "button"
         btn.className = on ? "is-on" : ""
         btn.setAttribute("aria-pressed", String(on))
-        btn.textContent = langName(track.lang)
+        btn.textContent = track.role === "overlay" ? "Text overlay" : langName(track.lang)
         btn.addEventListener("click", () => setActiveTrack(track.role, track.lang))
         return btn
       }),
@@ -492,7 +500,7 @@ export function createSubtitleStyleController({
 
   function setActiveCaptionFromBox(box: HTMLElement) {
     setActiveCaptionTrack(box.dataset.role || "default", box.dataset.lang || "")
-    if (box.dataset.lang) onSelectTrack?.(box.dataset.lang)
+    if (box.dataset.lang && box.dataset.role !== "overlay") onSelectTrack?.(box.dataset.lang)
   }
 
   function setActivePresetId(id: string) {
@@ -949,7 +957,7 @@ export function createSubtitleStyleController({
 
   function renderPresets() {
     ui.stylePresets.innerHTML = ""
-    CAPTION_PRESETS.forEach((p) => {
+    ;[...CAPTION_PRESETS, ...customPresets()].forEach((p) => {
       const on = p.id === activePresetId
       const btn = document.createElement("button")
       btn.type = "button"
@@ -1019,6 +1027,15 @@ export function createSubtitleStyleController({
     syncCaptionLayerBounds()
     ui.video.addEventListener("loadedmetadata", syncCaptionLayerBounds)
     ui.video.addEventListener("loadeddata", syncCaptionLayerBounds)
+    ui.saveStylePreset?.addEventListener("click", () => {
+      const name = window.prompt("Name this caption style:")?.trim()
+      if (!name) return
+      const presets = customPresets()
+      const preset = { id: `custom-${crypto.randomUUID()}`, name: name.slice(0, 40), s: cloneStyle(activeStyle()) }
+      presets.push(preset)
+      localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(presets))
+      applyPreset(preset)
+    })
     window.addEventListener("resize", syncCaptionLayerBounds)
     if ("ResizeObserver" in window) {
       new ResizeObserver(syncCaptionLayerBounds).observe(ui.videoPreview)

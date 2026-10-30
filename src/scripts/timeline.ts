@@ -25,6 +25,7 @@ type TimelineOptions = {
   tt?: (path: string, vars?: Record<string, unknown>) => string
   currentSegments: () => any[]
   visibleTracks?: () => TimelineTrack[]
+  textOverlays?: () => any[]
   activeLang?: () => string
   setActiveLang?: (lang: string) => void
   renderTabs?: () => void
@@ -47,6 +48,7 @@ export function createTimelineController(options: TimelineOptions) {
     tt,
     currentSegments,
     visibleTracks,
+    textOverlays = () => [],
     activeLang,
     setActiveLang,
     renderTabs,
@@ -578,8 +580,9 @@ export function createTimelineController(options: TimelineOptions) {
     updateTimelinePlayhead(current)
     onPlaybackTime?.(current)
     const tracks = getTracks()
+    const overlays = textOverlays()
     const editing = !!document.activeElement?.closest?.(".transcript")
-    if (!tracks.length || !ui.video.duration) {
+    if ((!tracks.length && !overlays.length) || !ui.video.duration) {
       renderCaptions?.([], current)
       if (!frameOnly) highlightSegment(-1, { touchSidebar: !editing })
       return
@@ -600,8 +603,17 @@ export function createTimelineController(options: TimelineOptions) {
         }
       })
       .filter((track) => track.text.trim())
-    const activeTrack =
-      tracks.find((track) => track.lang === activeLang) || tracks[0]
+    overlays.forEach((segment) => {
+      if (current >= segment.start && current <= segment.end && segment.text?.trim()) {
+        captionTracks.push({ lang: "__overlay", label: "Text overlay", role: "overlay", text: segment.text, segment })
+      }
+    })
+    const activeTrack = tracks.find((track) => track.lang === activeLang) || tracks[0]
+    if (!activeTrack) {
+      renderCaptions?.(captionTracks, current)
+      if (!frameOnly) highlightSegment(-1, { touchSidebar: !editing })
+      return
+    }
     const idx = activeTrack.segments.findIndex(
       (s) => current >= s.start && current <= s.end,
     )

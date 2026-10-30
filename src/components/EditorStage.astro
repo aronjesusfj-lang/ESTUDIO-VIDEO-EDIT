@@ -46,6 +46,26 @@ const t = useTranslations(Astro.currentLocale)
         {t.editor.downloadSrt}
       </button>
       <div class="export-group" role="group" aria-label={t.editor.videoExportOptions}>
+        <label class="export-field" title="Output framing">
+          <span class="sr-only">Output framing</span>
+          <select id="export-aspect" aria-label="Output framing">
+            <option value="source">Source</option>
+            <option value="vertical">Vertical 9:16</option>
+            <option value="square">Square 1:1</option>
+          </select>
+        </label>
+        <label class="export-crop" title="Horizontal crop position">
+          <span>{Astro.currentLocale === "es" ? "Encuadre" : "Crop"}</span>
+          <input id="export-crop-x" type="range" min="0" max="100" value="50" aria-label="Horizontal crop position" />
+        </label>
+        <label class="export-field export-watermark" title="Watermark text">
+          <span class="sr-only">Watermark text</span>
+          <input id="export-watermark" type="text" maxlength="40" placeholder="Watermark" aria-label="Watermark text" />
+        </label>
+        <label class="export-field export-normalize-audio" title="Normalize audio level">
+          <input id="normalize-audio" type="checkbox" />
+          <span>{Astro.currentLocale === "es" ? "Normalizar audio" : "Normalize audio"}</span>
+        </label>
         <label class="export-field" title={t.editor.videoFormat}>
           <span class="sr-only">{t.editor.videoFormat}</span>
           <select id="export-format" name="export-format">

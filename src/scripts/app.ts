@@ -1,6 +1,7 @@
 import { hasBuiltInTranslationSupport } from "@/scripts/builtInSupport.ts";
 import { cutRangesFromSegments } from "@/scripts/cuts.ts";
 import { createDownloadsController } from "@/scripts/downloads.ts";
+import { createBatchQueue } from "@/scripts/batchQueue.ts";
 import type {
   AppState,
   Editor,
@@ -11,6 +12,8 @@ import type {
 import type { createVideoExporter } from "@/scripts/export/videoExport.ts";
 import { createExportModal } from "@/scripts/export/exportModal.ts";
 import { baseFileName, prettifyBytes } from "@/scripts/file.ts";
+import { buildSrt } from "@/scripts/subtitles.ts";
+import { reviewSubtitleQuality } from "@/scripts/subtitleQuality.ts";
 import { I18N, langName, tt } from "@/scripts/i18n.ts";
 import { createStageManager } from "@/scripts/stageManager.ts";
 import { createConfigStageController } from "@/scripts/stages/configStage.ts";
@@ -85,6 +88,7 @@ function loadEditor() {
         isTranslationReady,
         cutRanges,
         selectedVideoFile: () => selectedVideoFile,
+        getWaveformAudio: () => waveformAudio,
         isExporting: () => exporting,
         setStage,
         onExportsEnabled: warmVideoExporter,
@@ -113,6 +117,7 @@ function loadTranslationService() {
         tt,
         langName,
         setStatus: configStageController.setStatus,
+        translationPreference: () => ui.translationModel?.value || "auto",
       });
       return translationService;
     })
@@ -210,6 +215,8 @@ function visibleTracks(): VisibleTrack[] {
 
 function currentVideoSegments(): any[] {
   const tracks = visibleTracks().filter((track) => !track.hidden);
+  const overlays = state.segmentsByLang["__overlay"] || [];
+  if (overlays.length) tracks.push({ lang: "__overlay", label: "Text overlay", role: "overlay", segments: overlays });
   return tracks.length ? tracks : [];
 }
 
@@ -290,6 +297,34 @@ const uploadStageController = createUploadStageController({
     configStageController.startEarlyTranscription(file),
   resetTranscriptionCache: () =>
     configStageController.resetTranscriptionCache(),
+});
+
+const batchQueue = createBatchQueue({
+  ui,
+  processFile: async (file) => {
+    uploadStageController.handleSelectedFile(file);
+    ui.asrModel.value = ui.batchModel.value || "balanced";
+    ui.translationModel.value = ui.batchTranslationModel.value || "auto";
+    ui.inputLang.value = "";
+    ui.outputLang.value = ui.batchLanguage.value || "same";
+    ui.exportFormat.value = ui.batchFormat.value || "mp4";
+    ui.normalizeAudio.checked = ui.batchNormalizeAudio.checked;
+    localStorage.setItem("subvid.batch-template.v1", JSON.stringify({ model: ui.batchModel.value, translationModel: ui.batchTranslationModel.value, language: ui.batchLanguage.value, output: ui.batchOutput.value, format: ui.batchFormat.value, normalizeAudio: ui.batchNormalizeAudio.checked }));
+    const result = await configStageController.generateForBatch();
+    if (!result) throw new Error(ui.configError.textContent || "Transcription failed")
+    const segments = result.segmentsByLang[result.activeLang] || result.segmentsByLang[result.detectedLang] || []
+    if (!segments.length) throw new Error("No subtitle segments were generated")
+    const warnings = reviewSubtitleQuality(segments)
+    if (ui.batchOutput.value === "video") await downloadVideo()
+    const blob = new Blob([buildSrt(segments)], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `${baseFileName(file)}.${result.activeLang}.srt`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    return warnings.map((warning) => `#${warning.segment}: ${warning.message}`)
+  },
 });
 
 const videoExporterOptions = (): Parameters<typeof createVideoExporter>[0] => ({

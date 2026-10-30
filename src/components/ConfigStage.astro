@@ -44,6 +44,23 @@ const t = useTranslations(Astro.currentLocale)
     </label>
 
     <label class="field">
+      <span>{Astro.currentLocale === "es" ? "Modelo de transcripción" : "Transcription model"}</span>
+      <select id="asr-model">
+        <option value="fast">{Astro.currentLocale === "es" ? "Rápido · Whisper Tiny" : "Fast · Whisper Tiny"}</option>
+        <option value="balanced" selected>{Astro.currentLocale === "es" ? "Equilibrado · Whisper Base" : "Balanced · Whisper Base"}</option>
+        <option value="accurate">{Astro.currentLocale === "es" ? "Más preciso · Whisper Small" : "More accurate · Whisper Small"}</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>{Astro.currentLocale === "es" ? "Modelo de traducción" : "Translation model"}</span>
+      <select id="translation-model">
+        <option value="auto">{Astro.currentLocale === "es" ? "Automático · local cuando sea posible" : "Automatic · prefer local when available"}</option>
+        <option value="compact">{Astro.currentLocale === "es" ? "Ligero · MarianMT" : "Lightweight · MarianMT"}</option>
+        <option value="quality">{Astro.currentLocale === "es" ? "Multilingüe · NLLB-200" : "Multilingual · NLLB-200"}</option>
+      </select>
+    </label>
+
+    <label class="field">
       <span>{t.config.subtitleLang}</span>
       <select id="output-lang">
         <option value="same">{t.config.sameAsAudio}</option>
