@@ -1,0 +1,15 @@
+---
+import Layout from "@/layouts/Layout.astro"
+import Home from "@/components/Home.astro"
+import { useTranslations } from "@/i18n/ui"
+
+// Keep the default-language homepage as a static asset. The edge middleware
+// only decides whether visitors to `/` should be redirected to another locale.
+export const prerender = true
+
+const t = useTranslations(Astro.currentLocale)
+---
+
+<Layout title={t.meta.title} description={t.meta.description}>
+  <Home />
+</Layout>
