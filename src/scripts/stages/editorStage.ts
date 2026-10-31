@@ -12,6 +12,10 @@ type EditorStageOptions = {
   selectedVideoFile: () => File | null
   isExporting: () => boolean
   setStage: (stage: Stage) => void
+  backStage?: () => Stage
+  projectVideos?: () => Array<{id:string;name:string}>
+  activeProjectVideoId?: () => string | null
+  onSelectProjectVideo?: (id:string) => void
   undo: () => void
   redo: () => void
 }
@@ -33,6 +37,10 @@ export function createEditorStageController({
   selectedVideoFile,
   isExporting,
   setStage,
+  backStage,
+  projectVideos,
+  activeProjectVideoId,
+  onSelectProjectVideo,
   undo,
   redo,
 }: EditorStageOptions) {
@@ -47,7 +55,7 @@ export function createEditorStageController({
   function backToConfig() {
     if (isExporting()) return
     ui.video.pause()
-    setStage("config")
+    setStage(backStage?.() || "config")
   }
 
   function downloadSrt() {
@@ -110,10 +118,23 @@ export function createEditorStageController({
 
   function wireEditorStage() {
     ui.backBtn.addEventListener("click", backToConfig)
+    if (ui.editorProjectVideo && projectVideos) {
+      syncProjectVideos()
+      ui.editorProjectVideo.addEventListener("change", () => onSelectProjectVideo?.(ui.editorProjectVideo.value))
+    }
     ui.undoBtn?.addEventListener("click", undo)
     ui.redoBtn?.addEventListener("click", redo)
     ui.downloadSrtBtn.addEventListener("click", downloadSrt)
     document.addEventListener("keydown", handleKeyboardShortcut)
+  }
+
+  function syncProjectVideos() {
+    if (!ui.editorProjectVideo || !projectVideos) return
+    const videos = projectVideos()
+    ui.editorProjectVideoWrap.hidden = videos.length < 2
+    ui.editorProjectVideo.replaceChildren(...videos.map(video => new Option(video.name, video.id)))
+    const activeId = activeProjectVideoId?.()
+    if (activeId) ui.editorProjectVideo.value = activeId
   }
 
   return {
@@ -121,5 +142,6 @@ export function createEditorStageController({
     backToConfig,
     downloadSrt,
     wireEditorStage,
+    syncProjectVideos,
   }
 }

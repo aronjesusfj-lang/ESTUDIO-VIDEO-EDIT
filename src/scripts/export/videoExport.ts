@@ -25,7 +25,7 @@ type VideoExportOptions = {
 }
 
 type WebCodecsExportResult =
-  | { handled: true }
+  | { handled: true; blob: Blob }
   | { handled: false; reason: string }
 
 type ExportFormat = "mp4" | "webm"
@@ -214,9 +214,9 @@ export function createVideoExporter(options: VideoExportOptions) {
     URL.revokeObjectURL(url)
   }
 
-  async function downloadVideo() {
+  async function exportToBlob(): Promise<Blob | null> {
     const segments = currentSegments()
-    if (!segments.length || isExporting()) return
+    if (!segments.length || isExporting()) return null
 
     const settings = exportSettings()
     setExporting(true)
@@ -228,7 +228,7 @@ export function createVideoExporter(options: VideoExportOptions) {
       let fallbackReason = getWebCodecsSupportIssue()
       if (!fallbackReason) {
         const result = await exportWithWebCodecs(segments, settings)
-        if (result.handled) return
+        if (result.handled) return result.blob
         fallbackReason = result.reason
       }
       if (fallbackReason) {
@@ -237,13 +237,21 @@ export function createVideoExporter(options: VideoExportOptions) {
           fallbackReason,
         )
       }
-      await exportWithRecorder(segments, settings, fallbackReason)
+      return await exportWithRecorder(segments, settings, fallbackReason)
+    } catch (error) {
+      console.error("[export] export to blob failed", error)
+      return null
     } finally {
       setExporting(false)
       ui.backBtn.disabled = false
       ui.transcribeBtn.disabled = false
       enableExports(true)
     }
+  }
+
+  async function downloadVideo() {
+    const blob = await exportToBlob()
+    if (blob) downloadBlob(blob, exportSettings())
   }
 
   async function exportWithWebCodecs(
@@ -462,7 +470,6 @@ export function createVideoExporter(options: VideoExportOptions) {
     const blob = new Blob([output.target.buffer], {
       type: `video/${settings.format}`,
     })
-    downloadBlob(blob, settings)
 
     modal.setExportStep("done", "done")
     modal.setExportProgress(100)
@@ -471,7 +478,7 @@ export function createVideoExporter(options: VideoExportOptions) {
     ui.exportHint.hidden = true
     ui.exportClose.hidden = false
     setStatus(tt("videoExported"), "ok")
-    return { handled: true }
+    return { handled: true, blob }
   }
 
   function audioThroughCuts(sample: any, cuts: TimeRange[]) {
@@ -496,7 +503,7 @@ export function createVideoExporter(options: VideoExportOptions) {
     segments: any[],
     settings: ExportSettings,
     fallbackReason = "",
-  ) {
+  ): Promise<Blob | null> {
     const video = ui.video
     const cuts = cutRanges()
 
@@ -516,7 +523,7 @@ export function createVideoExporter(options: VideoExportOptions) {
           ? tt("exportErrors.noSupportAfterFallback")
           : tt("exportErrors.noSupport"),
       )
-      return
+      return null
     }
 
     const sourceW = video.videoWidth || 1280
@@ -546,7 +553,7 @@ export function createVideoExporter(options: VideoExportOptions) {
           format: settings.format.toUpperCase(),
         }),
       )
-      return
+      return null
     }
     let recorder: MediaRecorder
     try {
@@ -557,7 +564,7 @@ export function createVideoExporter(options: VideoExportOptions) {
     } catch (e) {
       console.error(e)
       modal.failExport(tt("exportErrors.recordStart"))
-      return
+      return null
     }
 
     const chunks: Blob[] = []
@@ -565,14 +572,13 @@ export function createVideoExporter(options: VideoExportOptions) {
       if (e.data.size) chunks.push(e.data)
     }
 
-    const finished = new Promise<void>((resolve) => {
+    const finished = new Promise<Blob>((resolve) => {
       recorder.onstop = () => {
         modal.setExportStep("render", "done")
         modal.setExportStep("encode", "active")
         modal.setExportStage(tt("exportStages.generatingFile"), "busy")
         const blob = new Blob(chunks, { type: mimeType })
-        downloadBlob(blob, settings)
-        resolve()
+        resolve(blob)
       }
     })
 
@@ -651,10 +657,10 @@ export function createVideoExporter(options: VideoExportOptions) {
       video.volume = previousVolume
       video.playbackRate = previousRate
       modal.failExport(tt("exportErrors.playbackBlocked"))
-      return
+      return null
     }
 
-    await finished
+    const blob = await finished
 
     video.muted = wasMuted
     video.volume = previousVolume
@@ -668,9 +674,11 @@ export function createVideoExporter(options: VideoExportOptions) {
     ui.exportHint.hidden = true
     ui.exportClose.hidden = false
     setStatus(tt("videoExported"), "ok")
+    return blob
   }
 
   return {
     downloadVideo,
+    exportToBlob,
   }
 }

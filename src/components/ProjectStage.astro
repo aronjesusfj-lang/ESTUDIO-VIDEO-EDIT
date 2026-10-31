@@ -1,0 +1,39 @@
+---
+const es = Astro.currentLocale === "es"
+import { LANGS } from "@/scripts/languages.ts"
+const languageOptions = Object.entries(LANGS)
+---
+<section id="stage-project" class="stage-project" hidden aria-label={es ? "Mesa de producción" : "Production desk"}>
+  <header class="project-topbar">
+    <div class="project-brand"><span class="project-mark">S</span><strong>subvid<span>.app</span></strong></div>
+    <span class="project-divider"></span>
+    <input id="project-name" class="project-name" value={es ? "Proyecto sin título" : "Untitled project"} aria-label={es ? "Nombre del proyecto" : "Project name"} />
+    <span id="project-count" class="project-count">0 {es ? "videos" : "videos"}</span>
+    <div class="project-actions">
+      <button id="project-add" class="btn-ghost" type="button">＋ {es ? "Agregar videos" : "Add videos"}</button>
+      <input id="project-add-input" type="file" accept="video/*,audio/*" multiple hidden />
+      <button id="project-cancel" class="btn-ghost" type="button" hidden>{es ? "Cancelar" : "Cancel"}</button>
+      <button id="project-export" class="btn-ghost" type="button">{es ? "Exportar todo" : "Export all"}</button>
+      <button id="project-start" class="btn-primary" type="button" disabled>{es ? "Procesar proyecto" : "Process project"}</button>
+    </div>
+  </header>
+  <div class="project-toolbar">
+    <div><strong>{es ? "Mesa de producción" : "Production desk"}</strong><span id="project-status">{es ? "Agrega videos para empezar" : "Add videos to get started"}</span></div>
+    <div class="project-view" role="group" aria-label={es ? "Vista" : "View"}>
+      <button type="button" data-project-view="list" class="is-active">☷ {es ? "Lista" : "List"}</button>
+      <button type="button" data-project-view="grid">▦ {es ? "Cuadrícula" : "Grid"}</button>
+    </div>
+  </div>
+  <div class="project-layout">
+    <div class="project-table-wrap">
+      <div class="project-table-head"><span>{es ? "VIDEO / TEXTO" : "VIDEO / TEXT"}</span><span>{es ? "IDIOMA" : "LANGUAGE"}</span><span>{es ? "DURACIÓN" : "DURATION"}</span><span>{es ? "ESTADO" : "STATUS"}</span><span></span></div>
+      <div id="project-rows" class="project-rows" aria-live="polite"></div>
+      <div class="project-empty">{es ? "Arrastra aquí tus videos o usa «Agregar videos»." : "Drop videos here or use “Add videos”."}</div>
+    </div>
+    <aside class="project-rail">
+      <section><h3>{es ? "Ajustes" : "Settings"}</h3><label>{es ? "Idioma de audio" : "Audio language"}<select id="project-language"><option value="auto">{es ? "Detectar automáticamente" : "Auto detect"}</option>{languageOptions.map(([code, language]) => <option value={code}>{language.label}</option>)}</select></label><label>{es ? "Idioma de subtítulos" : "Subtitle language"}<select id="project-subtitle-language"><option value="same">{es ? "Igual que el audio" : "Same as audio"}</option>{languageOptions.map(([code, language]) => <option value={code}>{language.label}</option>)}</select></label><label>{es ? "Modelo" : "Model"}<select id="project-model"><option value="balanced">Whisper Base</option><option value="fast">Whisper Tiny</option><option value="accurate">Whisper Small</option></select></label></section>
+      <section><h3>{es ? "Estilo global" : "Global style"}</h3><button id="project-style-global" type="button">{es ? "Usar estilo actual como global" : "Use current editor style globally"}</button><p>{es ? "El estilo global se aplica a videos sin override." : "Global style applies to videos without an override."}</p></section>
+      <section><h3>{es ? "Salida" : "Output"}</h3><label>{es ? "Formato" : "Format"}<select id="project-output"><option value="srt">SRT</option><option value="video">MP4 + SRT</option></select></label><label class="project-check"><input id="project-zip" type="checkbox" checked /> {es ? "Descargar como ZIP" : "Download as ZIP"}</label></section>
+    </aside>
+  </div>
+</section>

@@ -20,6 +20,7 @@ type UploadStageOptions = {
   resetHistory: () => void;
   startEarlyTranscription: (file: File) => void;
   resetTranscriptionCache: () => void;
+  onBack?: () => boolean;
 };
 
 function isVideoFile(file: File) {
@@ -58,6 +59,7 @@ export function createUploadStageController({
   resetHistory,
   startEarlyTranscription,
   resetTranscriptionCache,
+  onBack,
 }: UploadStageOptions) {
   let dragDepth = 0;
   let unsupportedTimer: number | undefined;
@@ -275,7 +277,9 @@ export function createUploadStageController({
       const target = event.target as HTMLInputElement | null;
       handleSelectedFile(target?.files?.[0]);
     });
-    ui.configBackBtn.addEventListener("click", resetFlow);
+    ui.configBackBtn.addEventListener("click", () => {
+      if (!onBack?.()) resetFlow();
+    });
   }
 
   return {

@@ -2,6 +2,7 @@
 // caption styling, transcript editor, undo history and the editor toolbar. It
 // ships as its own chunk and loads when the user starts picking a file.
 import type { TimeRange } from "@/scripts/cuts.ts";
+import { DEFAULT_TRIM, effectiveCuts, normalizeEdits, type VideoEdits } from "@/scripts/edits.ts";
 import { createEditorHistory } from "@/scripts/editorHistory.ts";
 import { createEditorSegmentsController } from "@/scripts/editorSegments.ts";
 import type { Stage } from "@/scripts/stageManager.ts";
@@ -61,6 +62,12 @@ type EditorContext = {
   isExporting: () => boolean;
   setStage: (stage: Stage) => void;
   onExportsEnabled: (on: boolean) => void;
+  videoEdits?: () => VideoEdits;
+  updateVideoEdits?: (edits: VideoEdits) => void;
+  backStage?: () => Stage;
+  projectVideos?: () => Array<{id:string;name:string}>;
+  activeProjectVideoId?: () => string | null;
+  onSelectProjectVideo?: (id:string) => void;
 };
 
 export function createEditor(ctx: EditorContext) {
@@ -89,8 +96,13 @@ export function createEditor(ctx: EditorContext) {
 
   // Cut ranges are read on every playback frame: cache them per edit.
   let cuts: TimeRange[] = [];
+  let edits: VideoEdits = ctx.videoEdits?.() || { trim: { ...DEFAULT_TRIM }, manualCuts: [] };
   const refreshCuts = () => {
-    cuts = ctx.cutRanges();
+    edits = ctx.videoEdits?.() || edits;
+    const duration = Number.isFinite(ui.video.duration) ? ui.video.duration : 0;
+    cuts = ctx.videoEdits
+      ? effectiveCuts(edits, ctx.cutRanges(), duration)
+      : ctx.cutRanges();
   };
 
   function undo() {
@@ -156,6 +168,14 @@ export function createEditor(ctx: EditorContext) {
       renderSegments: () => editorSegmentsController.renderSegments(),
       enableExports,
       cutRanges: () => cuts,
+      videoEdits: () => edits,
+      updateVideoEdits: (next) => {
+        const before = snapshotSegments();
+        edits = next;
+        ctx.updateVideoEdits?.(edits);
+        pushHistory(before);
+        refreshCuts();
+      },
       onActiveSegment: (index, lang, scroll) =>
         transcript.setActiveLine(index, lang, scroll),
       onPlaybackTime: (time) => transcript.highlightTime(time),
@@ -268,6 +288,10 @@ export function createEditor(ctx: EditorContext) {
     activeLang: () => state.activeLang,
     isExporting: ctx.isExporting,
     setStage: ctx.setStage,
+    backStage: ctx.backStage,
+    projectVideos: ctx.projectVideos,
+    activeProjectVideoId: ctx.activeProjectVideoId,
+    onSelectProjectVideo: ctx.onSelectProjectVideo,
     undo,
     redo,
   });
@@ -280,6 +304,7 @@ export function createEditor(ctx: EditorContext) {
       dualTrackMode: state.dualTrackMode,
       dualTrackLangs: state.dualTrackLangs,
       trackStates: state.trackStates,
+      videoEdits: edits,
     }),
     restoreState: (snapshot) => {
       state.segmentsByLang = snapshot.segmentsByLang || {};
@@ -292,6 +317,8 @@ export function createEditor(ctx: EditorContext) {
       state.dualTrackMode = !!snapshot.dualTrackMode;
       state.dualTrackLangs = snapshot.dualTrackLangs || [];
       state.trackStates = snapshot.trackStates || {};
+      edits = snapshot.videoEdits || { trim: { ...DEFAULT_TRIM }, manualCuts: [] };
+      ctx.updateVideoEdits?.(edits);
     },
     refreshButtons: (canUndo, canRedo) => {
       if (ui.undoBtn) ui.undoBtn.disabled = !canUndo;
@@ -372,12 +399,22 @@ export function createEditor(ctx: EditorContext) {
     renderSegments,
     renderTabs,
     resetHistory: () => historyController.resetHistory(),
+    getVideoEdits: () => edits,
+    setVideoEdits: (next: VideoEdits) => {
+      const duration = Number.isFinite(ui.video.duration) ? ui.video.duration : 0;
+      edits = normalizeEdits(next, duration);
+      ctx.updateVideoEdits?.(edits);
+      refreshCuts();
+      renderTimeline();
+      updateCaption();
+    },
     setLangAddStatus,
     setWaveformAudio: (audio: Float32Array | null, sampleRate = 16_000) => {
       if (ui.alignSilenceBtn) ui.alignSilenceBtn.disabled = !audio?.length;
       setWaveform(audio?.length ? computeWaveform(audio, sampleRate) : null);
     },
     syncActiveCaptionStyle,
+    syncProjectVideos: editorStageController.syncProjectVideos,
     updateCaption,
   };
 }

@@ -1,168 +1,73 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
-import { mkdir, readdir, stat, access } from 'node:fs/promises'
+import { mkdir, readdir, stat, access, readFile, writeFile, rm } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { parseTime, parseTimeRange, effectiveCuts, segmentsThroughCuts } from './lib/cuts.mjs'
+import { loadManifest } from './lib/manifest.mjs'
+import { renderVideo } from './lib/media.mjs'
+import { toSrt } from './lib/subtitles.mjs'
 
-const args = process.argv.slice(2)
-const option = (name, fallback) => {
-  const index = args.indexOf(name)
-  return index >= 0 ? args[index + 1] : fallback
-}
-const flag = (name) => args.includes(name)
-const inputDir = path.resolve(option('--input', '.'))
-const outputDir = path.resolve(option('--output', path.join(inputDir, 'subvid-output')))
-const modelArg = option('--model', 'Xenova/whisper-tiny')
-const model = ({ tiny: 'Xenova/whisper-tiny', base: 'Xenova/whisper-base', small: 'Xenova/whisper-small' })[modelArg] || modelArg
-const language = option('--language', undefined)
-const sourceLanguage = option('--source-language', language)
-const translateTo = option('--translate-to', undefined)
-const nllbLanguages = { en: 'eng_Latn', es: 'spa_Latn', fr: 'fra_Latn', de: 'deu_Latn', pt: 'por_Latn', it: 'ita_Latn', nl: 'nld_Latn', ru: 'rus_Cyrl', ja: 'jpn_Jpan', ko: 'kor_Hang', zh: 'zho_Hans', ar: 'arb_Arab', hi: 'hin_Deva', pl: 'pol_Latn', tr: 'tur_Latn' }
+const argv = process.argv.slice(2)
+const opt = (key, fallback) => { const i = argv.indexOf(key); return i >= 0 ? argv[i + 1] : fallback }
+const opts = (key) => argv.flatMap((value, index) => value === key && argv[index + 1] ? [argv[index + 1]] : [])
+const has = (key) => argv.includes(key)
 const supported = /\.(mp4|mov|webm|mkv|avi|m4v|ogv|wmv|mp3|wav|ogg|m4a|aac|flac|wma|opus)$/i
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
+const modelArg = opt('--model', 'tiny')
+const model = ({ tiny: 'Xenova/whisper-tiny', base: 'Xenova/whisper-base', small: 'Xenova/whisper-small' })[modelArg] || modelArg
+const translateTo = opt('--translate-to')
+const sourceLanguage = opt('--source-language', opt('--language'))
+const language = opt('--language')
+const nllb = { en:'eng_Latn',es:'spa_Latn',fr:'fra_Latn',de:'deu_Latn',pt:'por_Latn',it:'ita_Latn',nl:'nld_Latn',ru:'rus_Cyrl',ja:'jpn_Jpan',ko:'kor_Hang',zh:'zho_Hans',ar:'arb_Arab',hi:'hin_Deva',pl:'pol_Latn',tr:'tur_Latn' }
 function help() {
-  console.log(`Subvid local batch transcriber\n\nUsage:\n  npm run batch -- --input ./videos --output ./subtitles [options]\n\nOptions:\n  --watch             Watch the input folder for new media\n  --model tiny|base|small  Whisper model (default: tiny)\n  --language es       Force an audio language (default: auto-detect)\n  --translate-to es   Translate subtitles with NLLB\n  --source-language es  Source language (default: auto-detected)\n  --help              Show this help\n\nRequires ffmpeg on PATH. Processing is local; model weights are downloaded once and cached.`)
+  console.log(`Subvid local batch transcriber and renderer\n\nUsage:\n  npm run batch -- --input ./videos --output ./out [options]\n  npm run batch -- --manifest ./project.json --output ./out [options]\n\nOptions:\n  --manifest file       Process a shared Subvid manifest v1\n  --input dir           Process every supported media file in a directory\n  --watch               Watch an input directory for new media\n  --model tiny|base|small Whisper model (default: tiny)\n  --language es         Force audio language (default: auto)\n  --translate-to es     Translate subtitles with NLLB\n  --source-language en  Translation source language\n  --trim START-END      Shared trim window, e.g. 00:05-01:20\n  --cut START-END       Add a cut; repeat for multiple cuts\n  --style file.json     Generic caption style JSON\n  --render-video        Render MP4 with cuts and styled burned-in captions\n  --help                Show this help\n\nManifest: {"version":1,"videos":[{"file":"clip.mp4","trim":{"start":2,"end":30},"cuts":[{"start":8,"end":10}],"style":{"fontSize":42,"color":"#ffffff"}}]}. Manifest paths are relative to the manifest.\nRequires ffmpeg and ffprobe. All processing is local.`)
 }
-if (flag('--help') || flag('-h')) { help(); process.exit(0) }
+if (has('--help') || has('-h')) { help(); process.exit(0) }
+const inputDir = path.resolve(opt('--input', '.'))
+const outputDir = path.resolve(opt('--output', path.join(inputDir, 'subvid-output')))
+const cliTrim = opt('--trim') ? parseTimeRange(opt('--trim')) : undefined
+const cliCuts = opts('--cut').map(parseTimeRange)
+let cliStyle = {}
+if (opt('--style')) cliStyle = JSON.parse(await readFile(path.resolve(opt('--style')), 'utf8'))
+if (translateTo && !nllb[translateTo]) throw new Error(`Unsupported translation language: ${translateTo}`)
+if (sourceLanguage && sourceLanguage !== 'auto' && !nllb[sourceLanguage]) throw new Error(`Unsupported source language: ${sourceLanguage}`)
 
-// The browser build selects ONNX Runtime Web/WASM and avoids requiring the
-// native onnxruntime-node addon (which is not shipped for every Mac setup).
-const { env, pipeline } = await import('../node_modules/@huggingface/transformers/dist/transformers.web.js')
-
-function run(command, commandArgs) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, commandArgs, { stdio: ['ignore', 'ignore', 'pipe'] })
-    let error = ''
-    child.stderr.setEncoding('utf8')
-    child.stderr.on('data', (chunk) => { error += chunk })
-    child.on('error', reject)
-    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(error || `${command} exited ${code}`)))
-  })
-}
-
-async function waitUntilStable(file) {
-  let lastSize = -1
-  let stable = 0
-  while (stable < 3) {
-    await sleep(1000)
-    const current = await stat(file).catch(() => null)
-    if (!current || !current.isFile()) throw new Error('File disappeared before processing')
-    stable = current.size === lastSize ? stable + 1 : 0
-    lastSize = current.size
-  }
-}
-
-async function availableOutput(file) {
-  const stem = `${path.parse(file).name}${translateTo ? `.${translateTo}` : ''}`
-  const base = path.join(outputDir, `${stem}.srt`)
-  let candidate = base
-  let suffix = 2
-  while (await access(candidate).then(() => true, () => false)) {
-    candidate = path.join(outputDir, `${stem}-${suffix++}.srt`)
-  }
-  return candidate
-}
-
-env.allowLocalModels = false
-env.useFS = true
-env.useFSCache = true
-env.useBrowserCache = false
+const transformer = await import('../node_modules/@huggingface/transformers/dist/transformers.web.js')
+const { env, pipeline } = transformer
+env.allowLocalModels = false; env.useFS = true; env.useFSCache = true; env.useBrowserCache = false
 env.cacheDir = path.join(os.homedir(), '.cache', 'subvid', 'models')
-if (translateTo && !nllbLanguages[translateTo]) {
-  console.error(`Unsupported --translate-to language: ${translateTo}. Supported: ${Object.keys(nllbLanguages).join(', ')}`)
-  process.exit(2)
-}
-if (sourceLanguage && sourceLanguage !== 'auto' && !nllbLanguages[sourceLanguage]) {
-  console.error(`Unsupported --source-language: ${sourceLanguage}. Supported: auto, ${Object.keys(nllbLanguages).join(', ')}`)
-  process.exit(2)
-}
-console.log(`Loading ${model} locally through Transformers.js…`)
-const transcriber = await pipeline('automatic-speech-recognition', model, {
-  dtype: 'q8',
-  progress_callback: (progress) => {
-    if (progress.status === 'progress') process.stdout.write(`\rModel download: ${Math.round(progress.progress || 0)}%`)
-  },
-})
-console.log('\nModel ready.')
+const recognizer = await pipeline('automatic-speech-recognition', model, { dtype:'q8', progress_callback: (p) => { if (p.status === 'progress') process.stdout.write(`\rModel download: ${Math.round(p.progress || 0)}%`) } })
 let translator
-if (translateTo) {
-  console.log('Loading NLLB translation model locally…')
-  translator = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', { dtype: 'q8' })
-  console.log('Translation model ready.')
-}
-await mkdir(inputDir, { recursive: true })
-await mkdir(outputDir, { recursive: true })
-const queued = new Set()
-let stopping = false
+if (translateTo) translator = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', { dtype:'q8' })
+await mkdir(outputDir, { recursive:true })
 
-async function processFile(file) {
-  const key = path.resolve(file)
-  if (queued.has(key) || !supported.test(file)) return
-  queued.add(key)
-  const temp = path.join(os.tmpdir(), `subvid-${process.pid}-${Date.now()}.f32le`)
+function run(command, args) { return new Promise((resolve,reject) => { const p=spawn(command,args,{stdio:['ignore','ignore','pipe']});let err='';p.stderr.setEncoding('utf8');p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',c=>c===0?resolve():reject(new Error(err||`${command} exited ${c}`))) }) }
+async function stable(file) { let size=-1, n=0;while(n<3){await new Promise(r=>setTimeout(r,1000));const s=await stat(file);n=s.size===size?n+1:0;size=s.size} }
+async function outputPath(file, extension) { const base=path.join(outputDir,`${path.parse(file).name}${translateTo?'.'+translateTo:''}${extension}`);let candidate=base,i=2;while(await access(candidate).then(()=>true,()=>false))candidate=path.join(outputDir,`${path.parse(file).name}${translateTo?'.'+translateTo:''}-${i++}${extension}`);return candidate }
+const pending = new Set()
+async function processVideo(item) {
+  const file=path.resolve(item.file); if(pending.has(file)||!supported.test(file)) return
+  pending.add(file);const temp=path.join(os.tmpdir(),`subvid-${process.pid}-${Date.now()}.f32le`)
   try {
-    await waitUntilStable(file)
-    console.log(`Transcribing ${path.basename(file)}…`)
-    await run('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', key, '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', '-acodec', 'pcm_f32le', temp])
-    const { readFile } = await import('node:fs/promises')
-    const pcm = await readFile(temp)
-    const audio = new Float32Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 4))
-    const result = await transcriber(audio, {
-      ...(language ? { language } : {}),
-      chunk_length_s: 30,
-      stride_length_s: 5,
-      return_timestamps: true,
-    })
-    const chunks = (result.chunks || []).filter((chunk) => chunk.text?.trim() && Array.isArray(chunk.timestamp))
-    if (!chunks.length && result.text?.trim()) throw new Error('Model returned no timestamps; no SRT was written')
-    if (translator && chunks.length) {
-      const src = sourceLanguage && sourceLanguage !== 'auto' ? sourceLanguage : (result.language || '').slice(0, 2).toLowerCase()
-      const srcCode = nllbLanguages[src]
-      if (!srcCode) throw new Error(`Could not determine a supported source language (Whisper detected: ${result.language || 'unknown'}); pass --source-language`)
-      for (let start = 0; start < chunks.length; start += 8) {
-        const group = chunks.slice(start, start + 8)
-        const translated = await translator(group.map((chunk) => chunk.text.trim()), { src_lang: srcCode, tgt_lang: nllbLanguages[translateTo] })
-        group.forEach((chunk, index) => { chunk.text = translated[index]?.translation_text || chunk.text })
-      }
-    }
-    const target = await availableOutput(file)
-    const stamp = (seconds) => {
-      const ms = Math.max(0, Math.round((Number(seconds) || 0) * 1000))
-      const hh = String(Math.floor(ms / 3600000)).padStart(2, '0')
-      const mm = String(Math.floor((ms % 3600000) / 60000)).padStart(2, '0')
-      const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')
-      return `${hh}:${mm}:${ss},${String(ms % 1000).padStart(3, '0')}`
-    }
-    const srt = chunks.map((chunk, index) => `${index + 1}\n${stamp(chunk.timestamp[0])} --> ${stamp(chunk.timestamp[1])}\n${chunk.text.trim()}`).join('\n\n') + '\n'
-    const { writeFile } = await import('node:fs/promises')
-    await writeFile(target, srt, { flag: 'wx' })
-    console.log(`Saved ${target}`)
-  } catch (error) {
-    queued.delete(key)
-    console.error(`Failed ${path.basename(file)}: ${error.message}`)
-  } finally {
-    await import('node:fs/promises').then(({ rm }) => rm(temp, { force: true }))
-  }
+    await stable(file); console.log(`Transcribing ${path.basename(file)}…`)
+    await run('ffmpeg',['-nostdin','-v','error','-y','-i',file,'-vn','-ac','1','-ar','16000','-f','f32le','-acodec','pcm_f32le',temp])
+    const pcm=await readFile(temp);const audio=new Float32Array(pcm.buffer,pcm.byteOffset,Math.floor(pcm.byteLength/4))
+    const result=await recognizer(audio,{...(item.language||language?{language:item.language||language}:{}),chunk_length_s:30,stride_length_s:5,return_timestamps:true})
+    let chunks=(result.chunks||[]).filter(c=>c.text?.trim()&&Array.isArray(c.timestamp)).map(c=>({start:c.timestamp[0],end:c.timestamp[1],text:c.text.trim()}))
+    if(!chunks.length&&result.text?.trim())throw new Error('Model returned no timestamps')
+    if(translator&&chunks.length){const src=item.sourceLanguage||sourceLanguage||(result.language||'').slice(0,2).toLowerCase();if(!nllb[src])throw new Error(`Unknown source language ${src}; pass --source-language`);for(let i=0;i<chunks.length;i+=8){const group=chunks.slice(i,i+8);const translated=await translator(group.map(c=>c.text),{src_lang:nllb[src],tgt_lang:nllb[translateTo]});group.forEach((c,j)=>c.text=translated[j]?.translation_text||c.text)}}
+    let duration=Number((await new Promise((resolve,reject)=>{const p=spawn('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',file],{stdio:['ignore','pipe','pipe']});let o='';p.stdout.on('data',x=>o+=x);p.on('error',reject);p.on('close',c=>c===0?resolve(o):reject(new Error('ffprobe failed')))})).trim())
+    const trim=item.trim||cliTrim, cuts=[...(item.cuts||[]),...cliCuts];const sourceChunks=chunks;const removed=effectiveCuts({trim,cuts},duration);chunks=segmentsThroughCuts(chunks,removed)
+    const srt=toSrt(chunks);const target=item.output?path.resolve(outputDir,item.output):await outputPath(file,'.srt');await writeFile(target,srt,{flag:'wx'});console.log(`Saved ${target}`)
+    if(has('--render-video')||item.renderVideo){const rendered=item.videoOutput?path.resolve(outputDir,item.videoOutput):await outputPath(file,'-subtitled.mp4');await renderVideo({input:file,output:rendered,trim,cuts,segments:sourceChunks,style:{...cliStyle,...(item.style||{})}});console.log(`Rendered ${rendered}`)}
+  } catch(e){console.error(`Failed ${path.basename(file)}: ${e.message}`)} finally {pending.delete(file);await rm(temp,{force:true})}
 }
 
-async function scan() {
-  const files = (await readdir(inputDir, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && supported.test(entry.name))
-    .map((entry) => path.join(inputDir, entry.name))
-  for (const file of files) await processFile(file)
-}
-
-await scan()
-if (flag('--watch')) {
-  console.log(`Watching ${inputDir}. Press Ctrl+C to stop.`)
-  const watcher = watch(inputDir, (_event, name) => {
-    if (!name || stopping) return
-    const file = path.join(inputDir, String(name))
-    void processFile(file)
-  })
-  const stop = () => { stopping = true; watcher.close(); process.exit(0) }
-  process.once('SIGINT', stop)
-  process.once('SIGTERM', stop)
+if(opt('--manifest')) { const manifest=await loadManifest(path.resolve(opt('--manifest')));for(const item of manifest.videos)await processVideo(item) }
+else {
+  await mkdir(inputDir,{recursive:true})
+  const scan=async()=>{const files=(await readdir(inputDir,{withFileTypes:true})).filter(e=>e.isFile()&&supported.test(e.name)).map(e=>({file:path.join(inputDir,e.name)}));for(const item of files)await processVideo(item)}
+  await scan()
+  if(has('--watch')){console.log(`Watching ${inputDir}; Ctrl+C stops the queue.`);const watcher=watch(inputDir,(_,name)=>{if(name)void processVideo({file:path.join(inputDir,String(name))})});process.once('SIGINT',()=>watcher.close());process.once('SIGTERM',()=>watcher.close());await new Promise(()=>{})}
 }

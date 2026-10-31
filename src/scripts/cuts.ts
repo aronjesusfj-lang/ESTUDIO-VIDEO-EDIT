@@ -38,6 +38,34 @@ export function cutRangesFromSegments(
   }, [])
 }
 
+/** A range narrowed to [start, end), or null when nothing of it is left. */
+export function clipRange(
+  range: TimeRange,
+  start: number,
+  end: number,
+): TimeRange | null {
+  if (!range) return null
+  const clippedStart = Math.max(start, range.start)
+  const clippedEnd = Math.min(end, range.end)
+  return clippedEnd > clippedStart
+    ? { start: clippedStart, end: clippedEnd }
+    : null
+}
+
+/** Every range narrowed to [start, end), order and overlaps untouched. */
+export function clipRanges(
+  ranges: TimeRange[],
+  start: number,
+  end: number,
+): TimeRange[] {
+  const clipped: TimeRange[] = []
+  for (const range of ranges || []) {
+    const value = clipRange(range, start, end)
+    if (value) clipped.push(value)
+  }
+  return clipped
+}
+
 export function cutAt(ranges: TimeRange[], time: number) {
   return ranges.find((range) => time >= range.start && time < range.end)
 }

@@ -70,6 +70,13 @@ export function createEditorSegmentsController(options: EditorSegmentsOptions) {
     return getState().segmentsByLang[lang] || []
   }
 
+  function emptyCue() {
+    const duration = Number.isFinite(ui.video?.duration) && ui.video.duration > 0 ? ui.video.duration : 3
+    const span = Math.min(3, duration)
+    const start = Math.max(0, Math.min(duration - span, Number(ui.video?.currentTime) || 0))
+    return { start, end: start + span, text: "" }
+  }
+
   function renderTabs() {
     const { orderedLangs, activeLang } = getState()
     ui.langTabs.innerHTML = ""
@@ -132,7 +139,7 @@ export function createEditorSegmentsController(options: EditorSegmentsOptions) {
     })
     ui.langAddSelect.value = ""
     ui.langAddSelect.hidden = !!translatingLang || orderedLangs.length >= MAX_LANGS
-    ui.langAddSelect.disabled = orderedLangs.length === 0 || remaining.length === 0
+    ui.langAddSelect.disabled = remaining.length === 0
   }
 
   function setLangAddStatus(message: string, kind = "ok") {
@@ -152,6 +159,14 @@ export function createEditorSegmentsController(options: EditorSegmentsOptions) {
     )
       return
     const existing = state.orderedLangs[0]
+    if (!existing) {
+      setSegmentsForLang(target, [emptyCue()])
+      setOrderedLangs([target])
+      setActiveLang(target)
+      setLangAddStatus("", "ok")
+      refresh()
+      return
+    }
     // A removed transcription is still in memory, so it comes back as it was.
     if (target === state.detectedLang && state.segmentsByLang[target]?.length) {
       showLanguage(existing, target, snapshotSegments())
@@ -165,7 +180,15 @@ export function createEditorSegmentsController(options: EditorSegmentsOptions) {
     const sourceSegs = (state.segmentsByLang[source] || state.baseSegments).filter(
       (seg) => seg.text.trim(),
     )
-    if (!sourceSegs?.length) return
+    if (!sourceSegs?.length) {
+      setSegmentsForLang(target, [emptyCue()])
+      setOrderedLangs([...state.orderedLangs, target])
+      showDualTrack(existing, target)
+      setActiveLang(target)
+      setLangAddStatus("", "ok")
+      refresh()
+      return
+    }
 
     translatingLang = target
     renderTabs()

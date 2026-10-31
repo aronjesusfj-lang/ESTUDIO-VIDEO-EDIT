@@ -28,46 +28,6 @@ const titleWords = t.hero.title.split(" ")
       <p class="hero-sub">{t.hero.sub}</p>
     </div>
 
-    <div class="batch-panel">
-      <label class="btn-ghost batch-add">
-        {Astro.currentLocale === "es" ? "Agregar varios videos" : "Add videos to batch"}
-        <input id="batch-input" type="file" accept="video/*,audio/*" multiple hidden />
-      </label>
-      <div id="batch-queue" class="batch-queue" hidden>
-        <div class="batch-template">
-          <label>{Astro.currentLocale === "es" ? "Modelo" : "Model"}
-            <select id="batch-model"><option value="fast">Whisper Tiny</option><option value="balanced" selected>Whisper Base</option><option value="accurate">Whisper Small</option></select>
-          </label>
-          <label>{Astro.currentLocale === "es" ? "Traducción" : "Translation"}
-            <select id="batch-translation-model"><option value="auto">Auto</option><option value="compact">MarianMT</option><option value="quality">NLLB-200</option></select>
-          </label>
-          <label>{Astro.currentLocale === "es" ? "Subtítulos" : "Subtitle language"}
-            <select id="batch-language">
-              <option value="same">{Astro.currentLocale === "es" ? "Idioma original" : "Original language"}</option>
-              <option value="es">Español</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="pt">Português</option><option value="it">Italiano</option><option value="ja">日本語</option>
-            </select>
-          </label>
-          <label>{Astro.currentLocale === "es" ? "Salida" : "Output"}
-            <select id="batch-output"><option value="srt">SRT</option><option value="video">{Astro.currentLocale === "es" ? "Video + SRT" : "Video + SRT"}</option></select>
-          </label>
-          <label>{Astro.currentLocale === "es" ? "Formato" : "Format"}
-            <select id="batch-format"><option value="mp4">MP4</option><option value="webm">WebM</option></select>
-          </label>
-          <label class="batch-check"><input id="batch-normalize-audio" type="checkbox" /> {Astro.currentLocale === "es" ? "Normalizar audio (MP4)" : "Normalize audio (MP4)"}</label>
-        </div>
-        <div id="batch-items" class="batch-items" aria-live="polite"></div>
-        <div class="batch-actions">
-          <button id="batch-start" class="btn-primary" type="button" disabled>
-            {Astro.currentLocale === "es" ? "Procesar lote" : "Process batch"}
-          </button>
-          <button id="batch-cancel" class="btn-ghost" type="button" hidden>
-            {Astro.currentLocale === "es" ? "Cancelar" : "Cancel"}
-          </button>
-          <span id="batch-progress" role="status"></span>
-        </div>
-      </div>
-    </div>
-
     <div
       id="dropzone"
       class="dropzone"
@@ -86,6 +46,7 @@ const titleWords = t.hero.title.split(" ")
         {t.hero.dropHint}
       </span>
     </div>
+    <button id="multi-upload-button" class="btn-ghost multi-upload-button" type="button">{t.hero.dropMultipleButton}</button>
   </div>
 
   <div class="upload-demo">

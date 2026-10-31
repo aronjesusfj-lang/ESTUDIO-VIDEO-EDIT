@@ -20,7 +20,7 @@ No uploads. No backend. No API keys.
 [![Astro](https://img.shields.io/badge/Astro-7-FF5D01?logo=astro&logoColor=white)](https://astro.build)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38BDF8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Whisper](https://img.shields.io/badge/AI-Whisper-412991?logo=openai&logoColor=white)](https://huggingface.co/Xenova/whisper-base)
-[![Cloudflare Workers](https://img.shields.io/badge/Deploy-Cloudflare_Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
+[![Static site](https://img.shields.io/badge/Deploy-Static%20hosting-4B5563)](#deployment)
 
 </div>
 
@@ -50,13 +50,13 @@ Everything runs client-side. Your files never leave your device.
 
 | Layer | Technology |
 | --- | --- |
-| Framework | [Astro 6](https://astro.build) (static site) |
+| Framework | [Astro 7](https://astro.build) (static site) |
 | Styling | [Tailwind CSS 4](https://tailwindcss.com) |
 | Speech recognition | [@xenova/transformers](https://www.npmjs.com/package/@xenova/transformers) (Whisper) |
 | Translation | transformers.js (NLLB-200) |
 | Audio extraction | [@ffmpeg/ffmpeg](https://ffmpegwasm.netlify.app) (WASM) |
 | Video export | [mediabunny](https://www.npmjs.com/package/mediabunny) + WebCodecs |
-| Deployment | [Cloudflare Workers](https://workers.cloudflare.com) (static assets) |
+| Deployment | Static assets in `dist/` (any static host) |
 
 ## Requirements
 
@@ -79,13 +79,15 @@ pnpm install
 pnpm dev
 ```
 
-On macOS versions older than 13.5, Cloudflare's local Workers runtime cannot start. Run the browser-only local app with `SUBVID_LOCAL_DEV=1 pnpm dev`; it skips the Workers adapter and does not affect production builds. The first transcription/translation downloads the selected model weights to the browser cache.
+The app builds as a fully static site, so it runs on any OS with Node.js 22.12+ (including macOS 12). The first transcription/translation downloads the selected model weights to the browser cache.
 
 On the supplied Mac, double-click `launch-subvid.command` (or the `ESTUDIO VIDEO EDIT.command` alias on the Desktop) to start local development and open the app in the browser.
 
-## Batch processing
+## Multi-video projects
 
-The upload screen accepts multiple media files. Choose the speech model, optional translation model and target language, output type, video format, and optional MP4 audio normalization, then start the queue. The queue processes one file at a time, reports per-file errors, supports retry/cancel, and saves the selected settings as a local template. Processed subtitles are downloaded as SRT; selecting “Video + SRT” also exports a subtitled video.
+Add two or more videos to open the production desk. Each row has its own subtitle text, language, trim, manual cuts, and editor snapshot; the editor state is restored when switching between videos. The project queue transcribes one video at a time. Choose SRT output or MP4 + SRT; project downloads can be packaged as a store-only ZIP, with individual downloads as the memory-limit fallback. A single file keeps the existing upload → config → editor flow.
+
+## CLI batch processing
 
 For an unattended folder workflow, install FFmpeg on the machine and use the CLI:
 
@@ -93,7 +95,7 @@ For an unattended folder workflow, install FFmpeg on the machine and use the CLI
 pnpm batch -- --input ./videos --output ./subtitles --model tiny --language es --watch
 ```
 
-The CLI accepts `--model tiny|base|small`, `--language es` to force speech recognition language, and optional `--translate-to es` with `--source-language en` when automatic source-language detection is unavailable. Translation uses NLLB-200. Media is decoded and processed locally; model weights are downloaded once to `~/.cache/subvid/models`. Existing output files are preserved and new runs get a numbered filename.
+The CLI accepts a project manifest (`--manifest project.json`) with `{"version":1,"videos":[{"file":"clip.mp4","trim":{"start":2,"end":18},"manualCuts":[{"start":5,"end":7}],"styleOverride":{}}]}` as well as directory input. Use `--trim START-END`, repeatable `--cut START-END`, `--style style.json`, and `--render-video` to apply edits and render a subtitled video. Speech models support `--model tiny|base|small` and `--language es`; optional translation uses `--translate-to es` and `--source-language en`. Media is processed locally, model weights are cached in `~/.cache/subvid/models`, and existing output files are preserved.
 
 The editor also supports adding subtitle cues and independent text overlays, splitting/merging transcript lines, optional alignment to nearby speech edges, custom style presets, vertical/square framing, horizontal crop, watermark text, and deterministic subtitle review hints. Speech-edge alignment is a timing aid and should be reviewed for music or noisy audio.
 
@@ -104,8 +106,6 @@ The editor also supports adding subtitle cues and independent text overlays, spl
 | `pnpm dev` | Start Astro dev server at `localhost:4321` |
 | `pnpm build` | Build the production site to `./dist/` |
 | `pnpm preview` | Preview the production build locally |
-| `pnpm preview:cf` | Build and preview with Wrangler (Cloudflare Workers runtime) |
-| `pnpm deploy` | Build and deploy to Cloudflare Workers |
 | `pnpm batch -- [options]` | Transcribe a folder locally; see Batch processing above |
 
 ## Project structure
@@ -123,7 +123,7 @@ src/
 └── styles/           # Global and app-specific CSS
 ```
 
-The app is a multi-stage SPA embedded in static Astro pages. Server-rendered copy lives in `src/i18n/ui.ts`; runtime strings for the active locale are injected into `window.__I18N__` so only one language ships per page.
+The app is a multi-stage SPA embedded in static Astro pages. Build-time copy lives in `src/i18n/ui.ts`; runtime strings for the active locale are injected into `window.__I18N__` so only one language ships per page.
 
 ## Architecture notes
 
@@ -142,13 +142,13 @@ The app is a multi-stage SPA embedded in static Astro pages. Server-rendered cop
 
 ## Deployment
 
-The site is deployed as static assets on Cloudflare Workers. Configuration lives in `wrangler.jsonc`:
+The site is a plain static build. Generate it with:
 
 ```sh
-pnpm deploy
+pnpm build
 ```
 
-You need a [Cloudflare account](https://dash.cloudflare.com) and Wrangler authenticated (`wrangler login`).
+Then upload the contents of `dist/` to any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, or a local web server). No Cloudflare account, Wrangler, or server runtime is required.
 
 ## Adding a language
 
