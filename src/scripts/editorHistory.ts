@@ -5,6 +5,7 @@ type HistoryState<TSegmentsByLang> = {
   dualTrackMode?: boolean
   dualTrackLangs?: string[]
   trackStates?: Record<string, { hidden?: boolean; locked?: boolean }>
+  videoEdits?: { trim: { start: number; end: number }; manualCuts: Array<{ start: number; end: number }> }
 }
 
 type EditorHistoryOptions<TSegmentsByLang> = {

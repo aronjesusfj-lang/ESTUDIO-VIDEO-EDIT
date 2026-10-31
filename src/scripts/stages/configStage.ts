@@ -90,6 +90,8 @@ type ConfigStageOptions = {
   // Receives the early (auto-language) transcript so the config preview can
   // show real words; `null` when the file changes.
   onTranscriptPreview?: (preview: TranscriptPreview | null) => void
+  onGenerationProgress?: (percent: number) => void
+  onGenerationStatus?: (message: string) => void
 }
 
 const hasWebGPU = typeof navigator !== "undefined" && "gpu" in navigator
@@ -114,6 +116,8 @@ export function createConfigStageController({
   setStage,
   prepareEditor,
   onTranscriptPreview,
+  onGenerationProgress,
+  onGenerationStatus,
 }: ConfigStageOptions) {
   let asrReadyModel = ""
   let asrReadyPromise: Promise<void> | null = null
@@ -129,6 +133,7 @@ export function createConfigStageController({
   function setStatus(message: string, kind = "ok") {
     ui.configStatus.textContent = message
     ui.configStatus.dataset.kind = kind
+    onGenerationStatus?.(message)
   }
 
   function setProgress(percent: number) {
@@ -154,6 +159,7 @@ export function createConfigStageController({
     ui.configProgressFill.style.width = `${clamped}%`
     ui.configProgressPct.textContent = `${rounded}%`
     ui.configProgressTrack?.setAttribute("aria-valuenow", String(rounded))
+    onGenerationProgress?.(rounded)
   }
 
   function stopProgressCreep() {
@@ -595,7 +601,7 @@ export function createConfigStageController({
       })
   }
 
-  async function generate() {
+  async function generate(options: { navigate?: boolean } = {}) {
     const file = selectedVideoFile()
     if (!file || isExporting()) return
 
@@ -736,7 +742,7 @@ export function createConfigStageController({
         tt("ready", { n: baseSegments.length, count: targets.length }),
         "ok",
       )
-      setStage("editor")
+      if (options.navigate !== false) setStage("editor")
       updateCaption()
       ui.configProgress.hidden = true
       logGeneration("done", {

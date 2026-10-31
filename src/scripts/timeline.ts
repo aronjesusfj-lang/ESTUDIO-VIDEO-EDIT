@@ -2,6 +2,7 @@ import { cutAt, type TimeRange } from "@/scripts/cuts.ts"
 import { $, $$ } from "@/scripts/dom.ts"
 import { formatClock } from "@/scripts/subtitles.ts"
 import { peakBetween, type Waveform } from "@/scripts/waveform.ts"
+import { DEFAULT_TRIM, normalizeEdits, type VideoEdits } from "@/scripts/edits.ts"
 
 type TimelineTrack = {
   lang: string
@@ -40,6 +41,8 @@ type TimelineOptions = {
   cutRanges?: () => TimeRange[]
   onActiveSegment?: (index: number, lang: string, scroll: boolean) => void
   onPlaybackTime?: (time: number) => void
+  videoEdits?: () => VideoEdits
+  updateVideoEdits?: (edits: VideoEdits) => void
 }
 
 export function createTimelineController(options: TimelineOptions) {
@@ -62,6 +65,8 @@ export function createTimelineController(options: TimelineOptions) {
     cutRanges = () => [],
     onActiveSegment,
     onPlaybackTime,
+    videoEdits = () => ({ trim: { ...DEFAULT_TRIM }, manualCuts: [] }),
+    updateVideoEdits,
   } = options
   const TL_MIN_DUR = 0.3
   const TL_HEADER_H = 40
@@ -226,6 +231,7 @@ export function createTimelineController(options: TimelineOptions) {
       ui.timelineBlocks.appendChild(row)
     })
     renderCuts()
+    syncEditControls()
     drawWaveform()
     updateTimelinePlayhead()
   }
@@ -239,6 +245,37 @@ export function createTimelineController(options: TimelineOptions) {
           `<span class="tl-cut" style="left:${range.start * tlPxPerSec}px;width:${Math.max(1, (range.end - range.start) * tlPxPerSec)}px"></span>`,
       )
       .join("")
+  }
+
+  function syncEditControls() {
+    const edits = videoEdits()
+    const start = document.querySelector<HTMLInputElement>("#tl-trim-start")
+    const end = document.querySelector<HTMLInputElement>("#tl-trim-end")
+    if (start && document.activeElement !== start) start.value = String(edits.trim.start || 0)
+    if (end && document.activeElement !== end) end.value = String(edits.trim.end || tlDuration || 0)
+  }
+
+  function wireEditControls() {
+    const start = document.querySelector<HTMLInputElement>("#tl-trim-start")
+    const end = document.querySelector<HTMLInputElement>("#tl-trim-end")
+    document.querySelector<HTMLButtonElement>("#tl-apply-trim")?.addEventListener("click", () => {
+      const duration = Number.isFinite(ui.video.duration) ? ui.video.duration : tlDuration
+      const current = videoEdits()
+      updateVideoEdits?.(normalizeEdits({ ...current, trim: {
+        start: Number(start?.value) || 0,
+        end: Number(end?.value) || duration,
+      } }, duration))
+      renderTimeline()
+    })
+    document.querySelector<HTMLButtonElement>("#tl-add-cut")?.addEventListener("click", () => {
+      const a = Number(start?.value) || 0
+      const b = Number(end?.value) || tlDuration
+      if (!(b > a)) return
+      const current = videoEdits()
+      const duration = Number.isFinite(ui.video.duration) ? ui.video.duration : tlDuration
+      updateVideoEdits?.(normalizeEdits({ ...current, manualCuts: [...current.manualCuts, { start: a, end: b }] }, duration))
+      renderTimeline()
+    })
   }
 
   // The canvas only covers the visible part of the timeline (it's sticky), so
@@ -631,6 +668,7 @@ export function createTimelineController(options: TimelineOptions) {
   }
 
   function wireTimeline() {
+    wireEditControls()
     ui.timelineTrack?.addEventListener("pointerdown", (event: any) => {
       if (event.target.closest(".tl-block, .tl-track-controls")) return
       beginScrub(event)

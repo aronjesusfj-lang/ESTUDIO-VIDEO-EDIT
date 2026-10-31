@@ -7,6 +7,8 @@ interface Props {
   description?: string
   image?: string
   noindex?: boolean
+  /** Send visitors whose browser/cookie prefers another locale to that page. */
+  localeRedirect?: boolean
 }
 
 const lang = toLang(Astro.currentLocale)
@@ -16,6 +18,7 @@ const {
   description = t.meta.description,
   image = "/og.png",
   noindex = false,
+  localeRedirect = false,
 } = Astro.props
 
 const site = Astro.site ?? new URL("https://subvid.app")
@@ -63,6 +66,43 @@ const structuredData = {
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f7f6" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d0d0d" />
     <meta name="color-scheme" content="light dark" />
+    {
+      localeRedirect && (
+        <script is:inline>
+          (() => {
+            const locales = ["en", "es"];
+            const defaultLocale = "en";
+            let target = "";
+            try {
+              const cookie = document.cookie
+                .split("; ")
+                .find((entry) => entry.startsWith("locale="));
+              if (cookie) {
+                const value = decodeURIComponent(cookie.slice("locale=".length));
+                if (locales.includes(value)) target = value;
+              }
+              if (!target) {
+                const candidates = navigator.languages?.length
+                  ? navigator.languages
+                  : [navigator.language || ""];
+                for (const candidate of candidates) {
+                  const code = candidate.toLowerCase().split("-")[0];
+                  if (locales.includes(code)) {
+                    target = code;
+                    break;
+                  }
+                }
+              }
+            } catch {
+              // Cookie access can fail in restricted contexts; stay on English.
+            }
+            if (target && target !== defaultLocale) {
+              location.replace(`/${target}/`);
+            }
+          })();
+        </script>
+      )
+    }
     <meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large"} />
     <meta name="description" content={description} />
     <meta name="keywords" content={t.meta.keywords} />

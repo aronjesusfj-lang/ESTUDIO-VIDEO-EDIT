@@ -39,6 +39,10 @@ const t = useTranslations(Astro.currentLocale)
         <Redo />
       </button>
     </div>
+    <label id="editor-project-video-wrap" class="editor-project-video" hidden>
+      <span class="sr-only">{Astro.currentLocale === "es" ? "Video del proyecto" : "Project video"}</span>
+      <select id="editor-project-video" aria-label={Astro.currentLocale === "es" ? "Video del proyecto" : "Project video"}></select>
+    </label>
     <div id="video-meta" class="video-meta"></div>
     <div class="editor-actions">
       <button id="download-srt-btn" class="btn-ghost export-srt" type="button" disabled>

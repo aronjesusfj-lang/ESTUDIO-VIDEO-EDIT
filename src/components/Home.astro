@@ -4,6 +4,7 @@ import DownloadsPanel from "@/components/DownloadsPanel.astro"
 import UploadStage from "@/components/UploadStage.astro"
 import ConfigStage from "@/components/ConfigStage.astro"
 import EditorStage from "@/components/EditorStage.astro"
+import ProjectStage from "@/components/ProjectStage.astro"
 import ExportModal from "@/components/ExportModal.astro"
 import LogoIcon from "@/assets/svg/logo.svg"
 import { clientStrings, defaultLang, toLang } from "@/i18n/ui"
@@ -26,6 +27,7 @@ const homePath = lang === defaultLang ? "/" : `/${lang}/`
 <main class="app" id="app">
   <UploadStage />
   <ConfigStage />
+  <ProjectStage />
   <EditorStage />
 </main>
 

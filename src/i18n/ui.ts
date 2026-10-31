@@ -34,6 +34,7 @@ export const ui = {
       sub: "Generate, edit and translate subtitles with AI. Everything runs in your browser: nothing is uploaded to any server.",
       dropLabel: "Drop your video or audio here",
       dropButton: "Choose file",
+      dropMultipleButton: "Add multiple videos",
       dropHint: "MP4, MOV, WebM, MKV, MP3, WAV or OGG",
       steps: [
         {
@@ -352,6 +353,7 @@ export const ui = {
       sub: "Genera, edita y traduce subtítulos con IA. Todo ocurre en tu navegador: no se sube nada a ningún servidor.",
       dropLabel: "Suelta aquí tu vídeo o audio",
       dropButton: "Elegir archivo",
+      dropMultipleButton: "Agregar varios videos",
       dropHint: "MP4, MOV, WebM, MKV, MP3, WAV u OGG",
       steps: [
         {
